@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ClientPrintFields } from '../types';
 import { qrUrl, triggerPrintCard } from '../utils/searchEngine';
 
@@ -17,17 +17,29 @@ export const PrintModal: React.FC<PrintModalProps> = ({
 }) => {
   const [printing, setPrinting] = useState(false);
 
+  // Garante que o botão de impressão seja destravado sempre que abrir um novo cliente ou o mesmo
+  useEffect(() => {
+    setPrinting(false);
+  }, [currentPrint]);
+
   if (!currentPrint) return null;
 
+  const handleClose = () => {
+    setPrinting(false);
+    onClose();
+  };
+
   const handlePrint = async () => {
+    if (printing) return;
     setPrinting(true);
     try {
       const ok = await triggerPrintCard(currentPrint, () => {
-        // Callback when printing finishes or window closes
+        // Callback executado quando o usuário conclui ou cancela a impressão
+        setPrinting(false);
         if (onPrintComplete) {
           onPrintComplete();
         } else {
-          onClose();
+          handleClose();
         }
       });
 
@@ -35,16 +47,14 @@ export const PrintModal: React.FC<PrintModalProps> = ({
         onToast('Erro ao abrir janela de impressão.');
         setPrinting(false);
       } else {
-        // Close modal and transition back to Smart Search
-        if (onPrintComplete) {
-          onPrintComplete();
-        } else {
-          onClose();
-        }
+        // Destrava o botão com segurança para que novas impressões nunca fiquem presas em loop
+        setTimeout(() => {
+          setPrinting(false);
+        }, 1200);
       }
     } catch (err: any) {
-      console.error(err);
-      alert(err.message || 'Erro ao preparar impressão.');
+      console.error('Erro ao preparar impressão:', err);
+      onToast(err.message || 'Erro ao preparar impressão.');
       setPrinting(false);
     }
   };
@@ -54,7 +64,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
       <div className="modal-card">
         <div className="modal-head">
           <b>Prévia da Ficha de Identificação</b>
-          <button id="closeModal" className="close" onClick={onClose} type="button">
+          <button id="closeModal" className="close" onClick={handleClose} type="button">
             Fechar
           </button>
         </div>
@@ -128,7 +138,7 @@ export const PrintModal: React.FC<PrintModalProps> = ({
         </div>
 
         <div className="modal-foot">
-          <button id="cancelPrint" className="cancel" onClick={onClose} type="button">
+          <button id="cancelPrint" className="cancel" onClick={handleClose} type="button">
             Voltar
           </button>
           <button

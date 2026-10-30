@@ -727,6 +727,7 @@ export default function App() {
 
       {/* Print Modal (Ficha de Identificação) */}
       <PrintModal
+        key={currentPrint ? `${currentPrint.code || currentPrint.razao || 'print'}_${currentPrint.date || ''}` : 'no-print'}
         currentPrint={currentPrint}
         onClose={() => setCurrentPrint(null)}
         onToast={showToast}

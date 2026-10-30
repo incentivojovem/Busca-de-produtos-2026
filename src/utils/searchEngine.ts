@@ -257,10 +257,22 @@ export function qrUrl(code: string): string {
 
 export async function getQrImage(code: string): Promise<HTMLImageElement | null> {
   return new Promise(resolve => {
+    let resolved = false;
+    const finish = (result: HTMLImageElement | null) => {
+      if (!resolved) {
+        resolved = true;
+        resolve(result);
+      }
+    };
+
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onload = () => finish(img);
+    img.onerror = () => finish(null);
+
+    // Timeout de 1.5s para evitar travamento em conexões lentas
+    setTimeout(() => finish(null), 1500);
+
     img.src = qrUrl(code);
   });
 }
@@ -446,46 +458,33 @@ export async function triggerPrintCard(
     }
   };
 
-  const messageHandler = (e: MessageEvent) => {
-    if (e.data && e.data.type === 'FICHA_PRINT_COMPLETED') {
-      window.removeEventListener('message', messageHandler);
-      notifyCompletion();
-    }
-  };
-  window.addEventListener('message', messageHandler);
+  const code = esc(f.code || 'Cliente');
 
-  const w = window.open('', '_blank', 'width=1000,height=750');
-  if (!w) {
-    // If popup blocked, create printable iframe or direct trigger
+  // Método preferencial: Iframe oculto direto (imune a bloqueadores de popup e não polui abas)
+  try {
+    const frameId = 'ficha-direct-print-frame';
+    const existing = document.getElementById(frameId);
+    if (existing) {
+      existing.remove();
+    }
+
     const printFrame = document.createElement('iframe');
+    printFrame.id = frameId;
     printFrame.style.position = 'fixed';
     printFrame.style.right = '0';
     printFrame.style.bottom = '0';
     printFrame.style.width = '0';
     printFrame.style.height = '0';
     printFrame.style.border = '0';
+    printFrame.style.opacity = '0';
+    printFrame.style.pointerEvents = 'none';
+    printFrame.style.zIndex = '-9999';
     document.body.appendChild(printFrame);
+
     const doc = printFrame.contentWindow?.document;
     if (doc) {
       doc.open();
-      doc.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha de Identificação - ${esc(f.code || 'Cliente')}</title><style>@page{size:landscape;margin:0}*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}html,body{background:#fff;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}.print-card-image{width:15.2cm;height:auto;max-width:96vw;max-height:96vh;object-fit:contain;display:block;margin:auto}</style></head><body><img class="print-card-image" src="${png}" alt="Ficha"><script>window.addEventListener('afterprint',function(){try{if(window.parent)window.parent.postMessage({type:'FICHA_PRINT_COMPLETED'},'*');}catch(e){}});<\/script></body></html>`);
-      doc.close();
-      setTimeout(() => {
-        printFrame.contentWindow?.focus();
-        printFrame.contentWindow?.print();
-        setTimeout(() => {
-          printFrame.remove();
-          notifyCompletion();
-        }, 1500);
-      }, 300);
-      return true;
-    }
-    return false;
-  }
-
-  const code = esc(f.code || 'Cliente');
-  w.document.open();
-  w.document.write(`<!doctype html>
+      doc.write(`<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
@@ -515,60 +514,101 @@ export async function triggerPrintCard(
 </head>
 <body>
   <img class="print-card-image" src="${png}" alt="Ficha de Identificação - ${code}">
-  <script>
-    var completed = false;
-    function finalizePrint() {
-      if (completed) return;
-      completed = true;
-      try {
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({ type: 'FICHA_PRINT_COMPLETED', code: '${code}' }, '*');
-        }
-      } catch (err) {}
-      setTimeout(function() {
-        try { window.close(); } catch(e) {}
-      }, 150);
-    }
-
-    // Modern browsers fire afterprint when user prints or cancels print dialog
-    window.addEventListener('afterprint', finalizePrint);
-
-    // Trigger print automatically after document rendering
-    setTimeout(function() {
-      window.focus();
-      try {
-        window.print();
-      } catch(e) {
-        console.error('Print trigger error:', e);
-      }
-    }, 350);
-  <\/script>
 </body>
 </html>`);
-  w.document.close();
+      doc.close();
 
-  // Watch popup window in case user closes it manually or afterprint completes
-  const watcher = setInterval(() => {
-    try {
-      if (!w || w.closed) {
+      setTimeout(() => {
+        try {
+          const frameWin = printFrame.contentWindow;
+          if (frameWin) {
+            frameWin.focus();
+
+            let finished = false;
+            const completeAndClean = () => {
+              if (!finished) {
+                finished = true;
+                setTimeout(() => {
+                  try { printFrame.remove(); } catch (_) {}
+                  notifyCompletion();
+                }, 300);
+              }
+            };
+
+            frameWin.addEventListener('afterprint', completeAndClean);
+            // Timeout de segurança caso o navegador não emita afterprint
+            setTimeout(completeAndClean, 30000);
+
+            frameWin.print();
+            return;
+          }
+        } catch (e) {
+          console.warn('Falha no printFrame, usando popup:', e);
+        }
+      }, 250);
+
+      return true;
+    }
+  } catch (frameErr) {
+    console.warn('Erro ao montar iframe de impressão, tentando popup:', frameErr);
+  }
+
+  // Fallback: Popup window
+  try {
+    const w = window.open('', '_blank', 'width=1000,height=750');
+    if (!w) {
+      notifyCompletion();
+      return false;
+    }
+
+    w.document.open();
+    w.document.write(`<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Ficha de Identificação - ${code}</title>
+  <style>
+    @page { size: landscape; margin: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { background: #fff; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .print-card-image { width: 15.2cm; height: auto; max-width: 96vw; max-height: 96vh; object-fit: contain; display: block; margin: auto; }
+  </style>
+</head>
+<body>
+  <img class="print-card-image" src="${png}" alt="Ficha de Identificação - ${code}">
+  <script>
+    window.addEventListener('afterprint', function() {
+      setTimeout(function() { try { window.close(); } catch(e){} }, 150);
+    });
+    setTimeout(function() { window.focus(); window.print(); }, 350);
+  </script>
+</body>
+</html>`);
+    w.document.close();
+
+    const watcher = setInterval(() => {
+      try {
+        if (!w || w.closed) {
+          clearInterval(watcher);
+          notifyCompletion();
+        }
+      } catch {
         clearInterval(watcher);
-        window.removeEventListener('message', messageHandler);
         notifyCompletion();
       }
-    } catch {
+    }, 400);
+
+    setTimeout(() => {
       clearInterval(watcher);
-      window.removeEventListener('message', messageHandler);
       notifyCompletion();
-    }
-  }, 300);
+    }, 45000);
 
-  // Safety cleanup timeout
-  setTimeout(() => {
-    clearInterval(watcher);
-    window.removeEventListener('message', messageHandler);
-  }, 60000);
-
-  return true;
+    return true;
+  } catch (popErr) {
+    console.error('Falha geral no disparo de impressão:', popErr);
+    notifyCompletion();
+    return false;
+  }
 }
 
 export function rowValue(row: DataRow, label: string): string {
