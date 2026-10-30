@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="favGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded Base with subtle border for dark mode tab contrast -->
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#favGradient)" stroke="#60a5fa" stroke-width="1" />
+  
+  <!-- Magnifying Glass & Package Icon -->
+  <g stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Magnifier Lens -->
+    <circle cx="14" cy="14" r="6" />
+    <!-- Magnifier Handle -->
+    <path d="M18.5 18.5L24 24" />
+    <!-- Mini Package/Card Accent inside Lens -->
+    <path d="M12 12.5h4M12 15h2.5" stroke-width="1.6" opacity="0.9" />
+  </g>
+</svg>
