@@ -1,0 +1,6 @@
+{
+  "name": "Busca de Produtos e Clientes",
+  "description": "Sistema de busca inteligente de produtos e clientes, cadastro manual, edição e emissão de fichas com QR Code.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
